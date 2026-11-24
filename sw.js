@@ -1,5 +1,5 @@
 // Service worker minimo: guarda la "cascara" de la app para que abra rapido. Las llamadas a la API nunca se guardan.
-var CACHE = 'wr-shell-v1';
+var CACHE = 'wr-shell-v2';
 var SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); })); });
 self.addEventListener('activate', function (e) {

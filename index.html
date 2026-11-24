@@ -98,6 +98,7 @@ function call(fn) {
     .then(function (j) { if (!j.ok) throw new Error(String(j.error || 'Error').replace(/^Error:\s*/, '')); return j.data; })
     .catch(function (e) { throw new Error(/Failed to fetch|NetworkError|Load failed/i.test(e.message) ? 'Sin conexión. Revisa tu internet e intenta de nuevo.' : e.message); });
 }function fmtD(d) { var m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(d || ''); if (!m) return d || ''; return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('es', { day:'numeric', month:'short', year:'numeric' }); }
+function stale() { var t = Date.parse(S.updated); return t && (Date.now() - t) > 12 * 3600 * 1000; }
 function stKey(s) { return s === 'OUT OF WARRANTY' ? 'OUT' : s; }
 
 var S = { code: ls('wr_code'), tech: ls('wr_tech'), rows: [], techs: [], parts: [], problems: [], updated: '',
@@ -150,7 +151,7 @@ function renderHist() {
     '<div class="tools"><input id="q" type="search" placeholder="Buscar AGV, parte, número, técnico…" value="' + esc(S.q) + '">' +
     '<div class="chips" style="margin-top:8px">' + chips.map(function (c) { return '<button class="chip' + (S.filter === c[0] ? ' on' : '') + '" data-f="' + c[0] + '">' + c[1] + '</button>'; }).join('') +
     (S.tech ? '<button class="chip' + (S.mine ? ' on' : '') + '" data-mine="1">Mías</button>' : '') + '</div></div>' +
-    '<div class="cnt">' + list.length + ' garantía' + (list.length === 1 ? '' : 's') + (S.updated ? ' · datos del ' + esc(S.updated.replace('T', ' ').slice(0, 16)) : '') + '</div>' +
+    '<div class="cnt">' + list.length + ' garantía' + (list.length === 1 ? '' : 's') + (S.updated ? ' · datos del ' + esc(S.updated.replace('T', ' ').slice(0, 16)) + (stale() ? ' ⚠ desactualizados' : '') : '') + '</div>' +
     (list.length ? list.slice(0, S.shown).map(function (r) { return rowHtml(r, S.rows.indexOf(r)); }).join('') : '<div class="center">No hay resultados.</div>') +
     (list.length > S.shown ? '<button class="btn ghost" id="more">Mostrar más</button>' : '');
   var q = $('q'); q.oninput = function () { S.q = q.value; S.shown = PAGE; var pos = q.selectionStart; renderHist(); var n = $('q'); n.focus(); n.setSelectionRange(pos, pos); };
@@ -162,7 +163,7 @@ function renderHist() {
 function openSheet(r) {
   var h = '<h2>' + esc(r.req || 'Sin número') + '</h2><span class="st">' + esc(LABEL[r.st] || r.st) + '</span><div class="kv">' +
     '<b>Parte</b><span>' + esc(r.part) + (r.code && r.code !== '-' ? '<br><small>' + esc(r.code) + '</small>' : '') + '</span>' +
-    '<b>AGV</b><span>' + esc(r.agv) + '</span><b>Fecha</b><span>' + esc(fmtD(r.d)) + '</span>' +
+    '<b>AGV</b><span>' + esc(r.agv) + '</span><b>Fecha</b><span>' + esc(fmtD(r.d)) + '</span>' + (r.rc ? '<b>Recibida</b><span>' + esc(fmtD(r.rc)) + '</span>' : '') + (r.w === 'YES' ? '<b>AGV operando</b><span>Sí</span>' : '') +
     (r.tech ? '<b>Técnico</b><span>' + esc(r.tech) + '</span>' : '') + (r.prob ? '<b>Problema</b><span>' + esc(r.prob) + '</span>' : '') +
     (r.tk ? '<b>Ticket Geek+</b><span>' + esc(r.tk) + '</span>' : '') + '</div>' +
     (r.fid && r.np ? '<button class="btn ghost" id="seePh" style="margin-bottom:10px">Ver fotos (' + r.np + ')</button><div class="imgs" id="imgs"></div>' : '') +
@@ -251,6 +252,20 @@ function submit(ev) {
     renderNew(); window.scrollTo(0, 0);
   }).catch(function (e) { S.busy = false; S.err = e.message; renderNew(); });
 }
+
+/* ---------- actualizar solo ---------- */
+function refreshQuiet() {
+  if (!S.code || document.hidden || S.busy || !$('nav') || $('nav').classList.contains('hide')) return;
+  call('getData', S.code).then(function (d) {
+    var same = d.updated === S.updated && d.rows.length === S.rows.filter(function (r) { return r.st !== 'ENVIADA' || r.fid; }).length;
+    S.rows = d.rows.slice().sort(function (a, b) { return (b.d || '').localeCompare(a.d || '') || (b.n || '').localeCompare(a.n || ''); });
+    S.techs = d.techs; S.parts = d.parts; S.problems = d.problems; S.updated = d.updated;
+    var typing = document.activeElement && (document.activeElement.id === 'q' || document.activeElement.tagName === 'INPUT');
+    if (S.view === 'hist' && $('sheet').classList.contains('hide') && !typing) renderHist();
+  }).catch(function () {});
+}
+setInterval(refreshQuiet, 60000);
+document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshQuiet(); });
 
 /* ---------- navegación ---------- */
 function go(v) { S.view = v; $('tHist').classList.toggle('on', v === 'hist'); $('tNew').classList.toggle('on', v === 'new'); render(); window.scrollTo(0, 0); }
